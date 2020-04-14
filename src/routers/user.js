@@ -1,4 +1,6 @@
 const express = require('express');
+const multer = require('multer');
+const sharp = require('sharp');
 const User = require('../models/user');
 const auth = require('../middleware/auth');
 
@@ -17,6 +19,55 @@ router.post('/users', async (req, res) => {
     } catch (err) {
         console.log(err);
         res.status(400).send(err);
+    }
+});
+
+const upload = multer({
+    limits: {
+        fileSize: 1000000 // 1MB
+    },
+    fileFilter(req, file, cb) {
+        if (!file.originalname.match(/\.(jpg|png|jpeg)$/)) {
+            return cb(new Error('Please upload an image file'));
+        }
+        cb(undefined, true);
+    }
+});
+
+router.post('/users/me/avatar', auth, upload.single('avatar'), async (req, res) => {
+    try {
+        const buffer = await sharp(req.file.buffer).png().resize({ width: 250, height: 250 }).toBuffer();
+        req.user.avatar = buffer;
+        await req.user.save();
+        res.status(200).send();
+    } catch (err) {
+        res.status(500).send(err);
+    }
+}, (error, req, res, next) => { // handling errors thrown by multer
+    res.status(400).send({ error: error.message });
+});
+
+router.get('/users/:id/avatar', async (req, res) => {
+    try {
+        const user = await User.findById(req.params.id);
+        if (!user || !user.avatar) {
+            throw new Error("Unable to find avatar");
+        }
+        res.set('Content-Type', 'image/png');
+        res.status(200).send(user.avatar);
+
+    } catch (err) {
+        res.status(404).send(err);
+    }
+});
+
+router.delete('/users/me/avatar', auth, async (req, res) => {
+    try {
+        req.user.avatar = undefined;
+        await req.user.save();
+        res.status(200).send();
+    } catch (err) {
+        res.status(500).send(err);
     }
 });
 
